@@ -64,6 +64,14 @@ class ChromeOtpAutofill:
         except Exception:
             return -100
 
+    @staticmethod
+    def _has_keyboard_focus(ctrl: UIAWrapper) -> bool:
+        """Return whether Windows UI Automation reports this Edit as focused."""
+        try:
+            return bool(getattr(ctrl.element_info, "has_keyboard_focus", False))
+        except Exception:
+            return False
+
     def _find_best_input(self, window: UIAWrapper) -> Optional[UIAWrapper]:
         positive = self._positive_inputs(window)
         # Multiple fields need an OTP length before they can be handled safely.
@@ -76,7 +84,13 @@ class ChromeOtpAutofill:
                 try:
                     if not ctrl.is_visible() or not ctrl.is_enabled():
                         continue
-                    candidates.append(InputCandidate(self._score_edit(ctrl), ctrl))
+                    score = self._score_edit(ctrl)
+                    # Some SSO pages expose a plain Edit with no accessible OTP
+                    # label. Accept it only when the user explicitly focused it;
+                    # negative-scored sensitive/address fields remain excluded.
+                    if score == 0 and self._has_keyboard_focus(ctrl):
+                        score = 1
+                    candidates.append(InputCandidate(score, ctrl))
                 except Exception:
                     continue
         except Exception:
@@ -100,6 +114,7 @@ class ChromeOtpAutofill:
                         "has_automation_id": bool(getattr(ctrl.element_info, "automation_id", "") or ""),
                         "class_name": str(getattr(ctrl.element_info, "class_name", "") or ""),
                         "score": self._score_edit(ctrl),
+                        "focused": self._has_keyboard_focus(ctrl),
                         "visible": bool(ctrl.is_visible()),
                         "enabled": bool(ctrl.is_enabled()),
                     }
@@ -139,7 +154,10 @@ class ChromeOtpAutofill:
             if self._foreground_handle() != initial_handle:
                 return False
             for target in targets:
-                if not target.is_visible() or not target.is_enabled() or self._score_edit(target) <= 0:
+                score = self._score_edit(target)
+                if score == 0 and self._has_keyboard_focus(target):
+                    score = 1
+                if not target.is_visible() or not target.is_enabled() or score <= 0:
                     return False
             if len(targets) == 1:
                 target = targets[0]

@@ -4,11 +4,12 @@ from browser.autofill import ChromeOtpAutofill
 
 
 class FakeEdit:
-    def __init__(self, name, automation_id="", class_name="", password=False):
+    def __init__(self, name, automation_id="", class_name="", password=False, focused=False):
         self.element_info = SimpleNamespace(
             name=name,
             automation_id=automation_id,
             class_name=class_name,
+            has_keyboard_focus=focused,
         )
         self._password = password
         self.typed = []
@@ -62,6 +63,20 @@ def test_search_field_with_code_in_name_is_rejected():
 
 def test_password_field_is_rejected_even_with_otp_keyword():
     assert autofill()._score_edit(FakeEdit("OTP", password=True)) < 0
+
+
+def test_focused_unlabelled_edit_is_the_only_candidate():
+    window = FakeWindow([
+        FakeEdit("Address and search bar", class_name="OmniboxViewViews", focused=False),
+        FakeEdit("", class_name="site-input", focused=True),
+    ])
+    candidates = autofill()._positive_inputs(window)
+    assert len(candidates) == 1
+    assert candidates[0].score == 1
+
+
+def test_unfocused_unlabelled_edit_is_rejected():
+    assert autofill()._positive_inputs(FakeWindow([FakeEdit("")])) == []
 
 
 def test_multiple_otp_fields_are_rejected_as_ambiguous():
