@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 
 DEFAULT_CONFIG = {
     "otp_source": "outlook_com",
@@ -299,7 +299,7 @@ def main() -> None:
     for message in source.messages(
         on_idle=lambda: logger.info("Still waiting for a new OTP message"),
         on_ready=lambda: logger.info(
-            "READY: request a new OTP now; messages already visible were ignored"
+            "READY: monitoring Outlook; a recent matching OTP can be recovered"
         ),
     ):
         parsed = parser.parse(message.text)
@@ -323,10 +323,20 @@ def main() -> None:
                 logger.warning("Dry-run: no suitable active Chrome input was found")
             continue
 
-        if autofill.fill(parsed.code, auto_submit=cfg.get("auto_submit", False)):
+        filled = False
+        # 재부팅 실패 원인: OTP를 발견한 바로 그 순간 Chrome/InnoPAT 탭이
+        # foreground가 아니면 fill()을 한 번만 실패한 뒤 코드를 폐기했다.
+        # 사용자가 InnoPAT 탭으로 돌아올 시간을 주되, 오래된 코드를 입력하지
+        # 않도록 메일 수신 시각 기준 유효기간 안에서만 재시도한다.
+        while time.time() - message.detected_at <= expire_seconds:
+            if autofill.fill(parsed.code, auto_submit=cfg.get("auto_submit", False)):
+                filled = True
+                break
+            time.sleep(0.5)
+        if filled:
             logger.info("OTP filled into active Chrome window")
         else:
-            logger.warning("OTP detected, but no suitable active Chrome input was found")
+            logger.warning("OTP expired while waiting for a suitable active Chrome input")
 
 
 if __name__ == "__main__":

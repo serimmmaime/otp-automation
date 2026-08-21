@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -17,7 +18,12 @@ def build_logger(level: str = "INFO") -> logging.Logger:
     stream.setFormatter(formatter)
     logger.addHandler(stream)
 
-    log_dir = Path(__file__).resolve().parents[1] / "logs"
+    app_root = (
+        Path(sys.executable).resolve().parent
+        if getattr(sys, "frozen", False)
+        else Path(__file__).resolve().parents[1]
+    )
+    log_dir = app_root / "logs"
     log_dir.mkdir(exist_ok=True)
     file_handler = RotatingFileHandler(
         log_dir / "app.log",

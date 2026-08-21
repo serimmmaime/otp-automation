@@ -192,7 +192,16 @@ class OutlookComSource:
         try:
             session = self._open_session()
             inbox = session.GetDefaultFolder(self.OL_FOLDER_INBOX)
-            baseline = {self._item_key(item) for item in self._recent_items(inbox)}
+            # 재부팅 실패 원인: 이전 구현은 시작 시 보이는 메일을 전부 baseline에
+            # 넣어서, Windows/Outlook 초기화 중 먼저 도착한 새 OTP까지 영구히
+            # 무시했다. 오래됐거나 무관한 메일만 baseline에 넣고, 아직 유효한
+            # OTP는 첫 poll에서 처리한다. 만료 검사와 deduplicator가 재사용을 막는다.
+            now = self._time()
+            baseline = {
+                self._item_key(item)
+                for item in self._recent_items(inbox)
+                if not self._metadata_matches(item, now)[0]
+            }
             if on_ready:
                 on_ready()
             last_idle = self._time()
