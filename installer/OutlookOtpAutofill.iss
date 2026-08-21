@@ -1,5 +1,5 @@
 #define MyAppName "Outlook OTP Autofill"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "INNOCEAN"
 
 [Setup]
