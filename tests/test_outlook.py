@@ -113,9 +113,26 @@ def test_invalid_pattern_without_single_capture_group_is_rejected():
         raise AssertionError("Expected ValueError")
 
 
-def test_listener_baselines_existing_mail_and_yields_only_new_match():
+def test_listener_recovers_recent_matching_mail_visible_at_startup():
     existing = fake_item(EntryID="existing", Body="인증코드 [111111]")
     items = FakeItems([existing])
+    inbox = SimpleNamespace(Items=items)
+    session = SimpleNamespace(GetDefaultFolder=lambda folder: inbox)
+    listener = source(session_factory=lambda: session)
+    messages = listener.messages()
+    message = next(messages)
+    messages.close()
+
+    assert message.text == "otp 111111"
+
+
+def test_listener_still_baselines_expired_mail_and_yields_new_match():
+    expired = fake_item(
+        EntryID="expired",
+        ReceivedTime=datetime.fromtimestamp(NOW - 91),
+        Body="인증코드 [111111]",
+    )
+    items = FakeItems([expired])
     inbox = SimpleNamespace(Items=items)
     session = SimpleNamespace(GetDefaultFolder=lambda folder: inbox)
     added = False
@@ -132,4 +149,3 @@ def test_listener_baselines_existing_mail_and_yields_only_new_match():
     messages.close()
 
     assert message.text == "otp 222222"
-    assert "111111" not in message.text

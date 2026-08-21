@@ -57,8 +57,13 @@ def is_process_running(executable_name: str) -> bool:
 
 
 def run() -> None:
-    project_root = Path(__file__).resolve().parent
-    main_script = project_root / "main.py"
+    frozen = bool(getattr(sys, "frozen", False))
+    project_root = Path(sys.executable).resolve().parent if frozen else Path(__file__).resolve().parent
+    main_command = (
+        [str(project_root / "otp_autofill.exe")]
+        if frozen
+        else [sys.executable, str(project_root / "main.py")]
+    )
     otp_process: subprocess.Popen[bytes] | None = None
 
     while True:
@@ -66,7 +71,7 @@ def run() -> None:
         otp_running = otp_process is not None and otp_process.poll() is None
         if chrome_running and not otp_running:
             otp_process = subprocess.Popen(
-                [sys.executable, str(main_script)],
+                main_command,
                 cwd=project_root,
                 creationflags=CREATE_NO_WINDOW,
             )

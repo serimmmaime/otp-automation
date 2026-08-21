@@ -4,6 +4,107 @@ Windows 10/11에서 **Classic Outlook으로 새로 도착한 SSO 인증 메일�
 
 > 현재 상태: 실제 회사 Outlook 받은편지함 → 메일 필터 → OTP 추출 → 활성 Chrome 입력까지 E2E 성공. 자동 제출은 OFF로 검증했습니다.
 
+## 처음부터 설치하기
+
+이 절차는 호스트 PC에 아무것도 설치되지 않은 상태를 기준으로 합니다. 회사가 관리하는 PC와 계정에서는 가상머신, Python, 시작프로그램 및 OTP 자동화 사용이 내부 보안정책에 허용되는지 먼저 확인하세요.
+
+### 가장 간단한 설치 방법
+
+릴리스에서 `OutlookOtpAutofillSetup.exe`를 받은 경우 VM 안에서 해당 파일을 실행하면 됩니다. 설치 프로그램은 Python과 Python 패키지를 포함하므로 사용자가 Python, Git 또는 소스코드를 별도로 설치할 필요가 없습니다.
+
+1. Classic Outlook과 Chrome을 먼저 설치하고 회사 계정 로그인을 완료합니다.
+2. `OutlookOtpAutofillSetup.exe`를 실행합니다.
+3. 설치 화면에서 `Windows 로그인 시 자동 시작`을 선택합니다.
+4. 설치 후 시작 메뉴의 `Outlook 진단`을 실행해 COM/MAPI/Inbox가 `True`인지 확인합니다.
+5. 재로그인하거나 설치 완료 화면에서 프로그램을 시작합니다.
+6. Chrome OTP 입력칸을 클릭한 상태에서 새 인증코드를 요청합니다.
+
+기본 설치 위치는 `%LOCALAPPDATA%\Programs\OutlookOtpAutofill`이며 관리자 권한이 필요하지 않습니다. 로그는 설치 폴더의 `logs\app.log`에 저장됩니다. Windows 앱 설정의 설치된 앱에서 일반 프로그램처럼 제거할 수 있습니다.
+
+Windows SmartScreen 또는 회사 보안 프로그램이 서명되지 않은 사내 제작 EXE를 차단할 수 있습니다. 조직 배포용으로 사용하려면 회사가 승인한 코드 서명 인증서로 설치 파일에 서명하세요.
+
+### 1. 가상머신 프로그램 준비
+
+Windows Pro/Enterprise 호스트라면 Windows 기능에서 **Hyper-V**를 켜는 방법을 권장합니다. Hyper-V를 사용할 수 없다면 회사에서 허용한 VMware Workstation 또는 VirtualBox를 사용할 수 있습니다.
+
+1. 호스트 PC BIOS/UEFI에서 CPU 가상화(Intel VT-x 또는 AMD-V)를 활성화합니다.
+2. 사용할 가상화 프로그램을 설치합니다.
+3. Windows 10/11 가상머신을 만들고 회사가 허용한 Windows 설치 이미지로 설치합니다.
+4. VM에 CPU 2코어 이상, 메모리 4GB 이상, 여유 디스크 30GB 이상을 할당합니다.
+5. 가상화 프로그램의 게스트 도구/통합 서비스를 설치하고 Windows Update를 완료합니다.
+6. VM의 시간대가 `(UTC+09:00) 서울`이고 날짜와 시간이 정확한지 확인합니다.
+
+> 이 프로그램은 Chrome의 현재 활성 입력칸을 Windows UI Automation으로 조작합니다. VM이 단순히 실행 중인 것만으로는 충분하지 않으며, Windows 사용자가 로그인되어 있고 데스크톱이 잠기지 않은 상태여야 합니다. RDP 연결 종료나 화면 잠금 후에는 UI 입력이 실패할 수 있습니다.
+
+호스트 부팅 시 VM까지 자동으로 켜려면 사용하는 가상화 프로그램에서 해당 VM의 자동 시작 기능을 별도로 설정해야 합니다. 이 저장소는 호스트의 VM 시작을 설정하지 않습니다.
+
+### 2. VM 안에 필수 프로그램 설치
+
+VM의 Windows에 다음 프로그램을 설치합니다.
+
+1. **Classic Outlook desktop**을 설치하고 회사 계정으로 로그인합니다.
+2. Outlook 받은편지함 동기화와 새 메일 수신을 확인합니다.
+3. **Google Chrome**을 설치합니다.
+4. **Python 3.11 이상(64-bit)**을 python.org에서 설치합니다. 설치 화면에서 Python Launcher를 포함하고, 가능하면 `Add Python to PATH`도 선택합니다.
+5. 프로젝트를 받을 때 Git을 사용할 경우 **Git for Windows**도 설치합니다.
+
+New Outlook과 Outlook Web은 이 프로젝트의 COM 방식으로 읽을 수 없습니다. Outlook 왼쪽 위에 `파일` 메뉴가 있는지 확인하세요.
+
+### 3. 프로젝트 받기
+
+Git을 사용한다면 VM의 PowerShell에서 다음을 실행합니다.
+
+```powershell
+git clone https://github.com/serimmmaime/otp-automation.git
+cd otp-automation
+```
+
+Git을 사용할 수 없다면 저장소 ZIP을 내려받아 VM의 로컬 폴더에 압축을 풉니다. 회사 정책에서 허용한다면 동기화 폴더보다 `C:\Tools\otp-automation`처럼 짧은 로컬 경로를 권장합니다.
+
+### 4. Python 환경 설치
+
+프로젝트 폴더의 PowerShell에서 다음을 한 번 실행합니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\run.ps1 --diagnose-outlook
+```
+
+`run.ps1`이 프로젝트 전용 `.venv`를 만들고 필요한 패키지를 설치합니다. 설치가 끝난 뒤 Outlook 진단에서 COM, MAPI session, Default Inbox가 모두 `True`인지 확인합니다.
+
+### 5. 수동 동작 검증
+
+자동 시작을 등록하기 전에 반드시 아래 순서로 한 번 성공시킵니다.
+
+1. Classic Outlook을 열고 받은편지함 동기화를 완료합니다.
+2. Chrome에서 SSO OTP 화면을 열고 인증코드 입력칸을 클릭합니다.
+3. PowerShell에서 `.\.venv\Scripts\python.exe main.py`를 실행합니다.
+4. `READY: request a new OTP now` 로그가 나온 뒤 새 OTP를 요청합니다.
+5. Chrome을 활성 상태로 유지하고 OTP가 입력되는지 확인합니다.
+
+### 6. Windows 로그인 시 자동 시작 등록
+
+수동 검증에 성공한 뒤 다음을 한 번 실행합니다.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install_chrome_autostart.ps1
+```
+
+이 명령은 현재 Windows 사용자의 시작프로그램에 `Outlook OTP Autofill.lnk`를 만듭니다. **Codex, PowerShell 창 또는 편집기를 열어둘 필요는 없습니다.** 다음 로그인부터 숨은 감시기가 실행되고, Chrome이 실행되면 OTP 프로그램을 시작합니다.
+
+Outlook과 Chrome 자체도 로그인할 때 자동으로 열고 싶다면 각 프로그램 바로가기를 Windows 시작프로그램 폴더(`Win+R` → `shell:startup`)에 추가합니다. Outlook이 완전히 동기화되기 전에는 프로그램이 잠시 재시도할 수 있습니다.
+
+### 7. 재부팅 검증
+
+1. VM의 Windows를 재부팅하고 사용자 계정에 로그인합니다.
+2. Classic Outlook과 Chrome이 실행되었는지 확인합니다.
+3. `logs\app.log`에서 새 `READY` 기록을 확인합니다.
+4. Chrome OTP 입력칸을 클릭한 상태에서 새 코드를 요청합니다.
+5. 자동 입력을 확인합니다. 기본 설정에서는 확인 버튼을 자동으로 누르지 않습니다.
+
+전체 무인 기동에는 `호스트 부팅 → VM 자동 시작 → VM Windows 로그인 → Outlook/Chrome 시작 → OTP 감시기 시작`이 모두 필요합니다. 자동 로그인을 사용하면 계정과 메일이 노출될 위험이 있으므로 회사 정책과 물리적 접근 통제를 확인하세요.
+
 ## 평소 실행 방법
 
 1. **Classic Outlook 데스크톱 앱**을 실행하고 회사 받은편지함 동기화를 기다립니다.

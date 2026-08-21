@@ -6,4 +6,5 @@ logs/*.log
 build/
 dist/
 *.spec
+installer/Output/
 .DS_Store
