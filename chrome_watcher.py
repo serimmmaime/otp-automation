@@ -11,7 +11,7 @@ from pathlib import Path
 TH32CS_SNAPPROCESS = 0x00000002
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 CREATE_NO_WINDOW = 0x08000000
-STARTUP_GRACE_SECONDS = 15
+POLL_INTERVAL_SECONDS = 1
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -67,10 +67,6 @@ def run() -> None:
     )
     otp_process: subprocess.Popen[bytes] | None = None
 
-    # 시작프로그램은 Outlook과 Chrome보다 먼저 실행될 수 있다. Windows의
-    # 로그인 직후 부하가 가라앉을 시간을 준 뒤 준비 상태를 확인한다.
-    time.sleep(STARTUP_GRACE_SECONDS)
-
     while True:
         chrome_running = is_process_running("chrome.exe")
         outlook_running = is_process_running("outlook.exe")
@@ -88,7 +84,7 @@ def run() -> None:
             except subprocess.TimeoutExpired:
                 otp_process.kill()
             otp_process = None
-        time.sleep(3)
+        time.sleep(POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":
