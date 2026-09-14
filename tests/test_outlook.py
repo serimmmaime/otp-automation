@@ -126,6 +126,61 @@ def test_listener_recovers_recent_matching_mail_visible_at_startup():
     assert message.text == "otp 111111"
 
 
+def test_listener_retries_until_outlook_inbox_is_ready():
+    existing = fake_item(EntryID="startup", Body="인증코드 [333333]")
+    inbox = SimpleNamespace(Items=FakeItems([existing]))
+    session = SimpleNamespace(GetDefaultFolder=lambda folder: inbox)
+    attempts = 0
+    sleeps = []
+
+    def delayed_session():
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise RuntimeError("Outlook is still starting")
+        return session
+
+    listener = source(session_factory=delayed_session, sleep_fn=sleeps.append)
+    messages = listener.messages()
+    message = next(messages)
+    messages.close()
+
+    assert attempts == 3
+    assert sleeps == [2.0, 2.0]
+    assert message.text == "otp 333333"
+
+
+def test_listener_reconnects_after_outlook_disconnect():
+    class DisconnectingItems(FakeItems):
+        def __init__(self):
+            super().__init__([])
+            self.failed = False
+
+        @property
+        def Count(self):
+            if not self.failed:
+                self.failed = True
+                return 0
+            raise RuntimeError("Outlook disconnected")
+
+    first_inbox = SimpleNamespace(Items=DisconnectingItems())
+    second_inbox = SimpleNamespace(
+        Items=FakeItems([fake_item(EntryID="reconnected", Body="인증코드 [444444]")])
+    )
+    sessions = iter(
+        [
+            SimpleNamespace(GetDefaultFolder=lambda folder: first_inbox),
+            SimpleNamespace(GetDefaultFolder=lambda folder: second_inbox),
+        ]
+    )
+    listener = source(session_factory=lambda: next(sessions))
+    messages = listener.messages()
+    message = next(messages)
+    messages.close()
+
+    assert message.text == "otp 444444"
+
+
 def test_listener_still_baselines_expired_mail_and_yields_new_match():
     expired = fake_item(
         EntryID="expired",

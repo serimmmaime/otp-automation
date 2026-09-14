@@ -190,8 +190,17 @@ class OutlookComSource:
 
         pythoncom.CoInitialize()
         try:
-            session = self._open_session()
-            inbox = session.GetDefaultFolder(self.OL_FOLDER_INBOX)
+            # Windows 로그인 직후에는 Outlook 프로세스가 떠 있어도 COM/MAPI와
+            # 받은편지함 초기화가 끝나지 않을 수 있다. 연결 실패로 프로세스를
+            # 종료하지 않고 준비될 때까지 계속 재시도한다.
+            while True:
+                try:
+                    session = self._open_session()
+                    inbox = session.GetDefaultFolder(self.OL_FOLDER_INBOX)
+                    initial_items = self._recent_items(inbox)
+                    break
+                except Exception:
+                    self._sleep(self.poll_interval)
             # 재부팅 실패 원인: 이전 구현은 시작 시 보이는 메일을 전부 baseline에
             # 넣어서, Windows/Outlook 초기화 중 먼저 도착한 새 OTP까지 영구히
             # 무시했다. 오래됐거나 무관한 메일만 baseline에 넣고, 아직 유효한
@@ -199,7 +208,7 @@ class OutlookComSource:
             now = self._time()
             baseline = {
                 self._item_key(item)
-                for item in self._recent_items(inbox)
+                for item in initial_items
                 if not self._metadata_matches(item, now)[0]
             }
             if on_ready:
@@ -207,7 +216,20 @@ class OutlookComSource:
             last_idle = self._time()
             while True:
                 now = self._time()
-                for item in self._recent_items(inbox):
+                try:
+                    items = self._recent_items(inbox)
+                except Exception:
+                    # Outlook 업데이트나 프로필 동기화로 COM 연결이 끊겨도
+                    # 기존 baseline을 유지한 채 받은편지함을 다시 연결한다.
+                    while True:
+                        try:
+                            session = self._open_session()
+                            inbox = session.GetDefaultFolder(self.OL_FOLDER_INBOX)
+                            items = self._recent_items(inbox)
+                            break
+                        except Exception:
+                            self._sleep(self.poll_interval)
+                for item in items:
                     key = self._item_key(item)
                     if key in baseline:
                         continue
