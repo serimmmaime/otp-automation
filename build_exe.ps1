@@ -6,9 +6,12 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+$distPath = Join-Path $PSScriptRoot "dist"
+$buildWork = Join-Path ([IO.Path]::GetTempPath()) ("OutlookOtpAutofillBuild-" + [guid]::NewGuid().ToString("N"))
 if (-not (Test-Path -LiteralPath $python)) {
     throw ".venv is missing. Run .\run.ps1 once before building."
 }
+New-Item -ItemType Directory -Path $buildWork | Out-Null
 
 & $python -m pip install -r requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw "Installing build requirements failed with exit code $LASTEXITCODE." }
@@ -16,6 +19,7 @@ if ($LASTEXITCODE -ne 0) { throw "Installing build requirements failed with exit
 if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }
 
 & $python -m PyInstaller --noconfirm --clean --onefile --windowed `
+    --workpath $buildWork --specpath $buildWork --distpath $distPath `
     --name otp_autofill `
     --hidden-import win32timezone `
     --collect-submodules pywinauto `
@@ -23,11 +27,13 @@ if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }
 if ($LASTEXITCODE -ne 0) { throw "Building otp_autofill.exe failed with exit code $LASTEXITCODE." }
 
 & $python -m PyInstaller --noconfirm --clean --onefile --windowed `
+    --workpath $buildWork --specpath $buildWork --distpath $distPath `
     --name chrome_watcher `
     chrome_watcher.py
 if ($LASTEXITCODE -ne 0) { throw "Building chrome_watcher.exe failed with exit code $LASTEXITCODE." }
 
 & $python -m PyInstaller --noconfirm --clean --onefile --console `
+    --workpath $buildWork --specpath $buildWork --distpath $distPath `
     --name otp_diagnostics `
     --hidden-import win32timezone `
     --collect-submodules pywinauto `
